@@ -1,5 +1,65 @@
 #include <opencv2/opencv.hpp>
 
+typedef struct vector
+{
+	CvPoint* points;
+	int back;
+	int size;
+}Vector;
+void initVector(Vector* vec, int size);
+int pushVector(Vector* vec, CvPoint elem);
+
+float getError(CvScalar c1, CvScalar c2);
+float getMeanError(int x, int y, int grid, IplImage* canvas, IplImage* ref);
+CvPoint getLargestErrorPoint(int x, int y, int grid, IplImage* canvas, IplImage* ref);
+void shuffle(CvPoint* arr, int size);
+float getDiff(CvScalar a, CvScalar b);
+Vector makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas);
+void drawSplines(IplImage* canvas, Vector* strokes, int R, CvScalar strokeColor);
+void paintLayer(IplImage* canvas, IplImage* ref, int R, int drawingMode);
+IplImage* paint(IplImage* src, int R[5], int drawingMode);
+
+int main()
+{
+	printf("=============================================\n");
+	printf("Software Department, Sejong University\n");
+	printf("Multimedia Programming Homework #4\n");
+	printf("Painterly Rendering\n");
+	printf("22011824 이지호\n");
+	printf("=============================================\n");
+	
+	char filePath[50]; //"c:\\TempImg\\giraffe.jpg"
+	printf("Input File Path: ");
+	scanf("%s", filePath);
+	IplImage* src = cvLoadImage(filePath);
+	while (src == nullptr)
+	{
+		printf("File Not Found!\n");
+		printf("Input File Path: ");
+		scanf("%s", filePath);
+		src = cvLoadImage(filePath);
+	}
+	int drawingMode;
+	printf("Select Drawing Mode (0=circle, 1=stroke): ");
+	scanf("%d", &drawingMode);
+	while (!(drawingMode == 0 || drawingMode == 1))
+	{
+		printf("Wrong Drawing Mode!\n");
+		printf("Select Drawing Mode (0=circle, 1=stroke): ");
+		scanf("%d", &drawingMode);
+	}
+
+	int R[5] = { 9,7,5,3,1 };
+	for (int i = 0; i < 5; i++)
+		R[i] *= 3;
+
+	cvShowImage("src", src);
+	IplImage* canvas = paint(src, R, drawingMode);
+	cvWaitKey();
+
+	return 0;
+}
+
 float getError(CvScalar c1, CvScalar c2)
 {
 	float sum = 0;
@@ -10,7 +70,7 @@ float getError(CvScalar c1, CvScalar c2)
 	return sqrt(sum);
 }
 
-float getAreaError(int x, int y, int grid, IplImage* canvas, IplImage* ref)
+float getMeanError(int x, int y, int grid, IplImage* canvas, IplImage* ref)
 {
 	float areaError = 0.f;
 	int cnt = 0;
@@ -74,13 +134,6 @@ float getDiff(CvScalar a, CvScalar b)
 	return sum;
 }
 
-typedef struct vector
-{
-	CvPoint* points;
-	int back;
-	int size;
-}Vector;
-
 void initVector(Vector* vec, int size)
 {
 	vec->points = (CvPoint*)malloc(sizeof(CvPoint) * size);
@@ -132,7 +185,7 @@ Vector makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 		//detect vanishing gradient
 		if (sqrt(gx * gx + gy * gy) == 0)
 			break;
-		
+
 		//get unit vector of gradient
 		float dx = -gy;
 		float dy = gx;
@@ -144,7 +197,7 @@ Vector makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 		}
 
 		//filter the stroke direction
-		float fc = 0.8; //이게 뭐노
+		float fc = 0.8;
 		dx = fc * dx + (1 - fc) * lastDx;
 		dy = fc * dy + (1 - fc) * lastDy;
 		float norm = sqrt(dx * dx + dy * dy);
@@ -170,7 +223,6 @@ Vector makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 
 void drawSplines(IplImage* canvas, Vector* strokes, int R, CvScalar strokeColor)
 {
-	//draw strokes
 	for (int i = 0; i < strokes->back; i++)
 	{
 		cvDrawLine(canvas, strokes->points[i], strokes->points[i + 1], strokeColor, R);
@@ -185,23 +237,23 @@ void paintLayer(IplImage* canvas, IplImage* ref, int R, int drawingMode)
 	Vector strokes;
 	initVector(&strokes, size.height * size.width);
 
-	int fg = 1; //임시
+	int fg = 1;
 	int grid = R * fg;
 
 	for (int y = 0; y < size.height; y += grid)
 	{
 		for (int x = 0; x < size.width; x += grid)
 		{
-			//평균 에러 구하기
-			float areaError = getAreaError(x, y, grid, canvas, ref);
+			//get mean error near (x,y)
+			float areaError = getMeanError(x, y, grid, canvas, ref);
 
-			//붓질이 필요할 때만 칠하기
+			//threshold
 			int T = 50;
 			if (areaError > T)
 			{
 				//find the largest error point
 				CvPoint point = getLargestErrorPoint(x, y, grid, canvas, ref);
-				
+
 				//add strokes
 				pushVector(&strokes, point);
 			}
@@ -216,9 +268,10 @@ void paintLayer(IplImage* canvas, IplImage* ref, int R, int drawingMode)
 	{
 		CvPoint point = strokes.points[i];
 		CvScalar color = cvGet2D(ref, point.y, point.x);
-		if(drawingMode == 0)
+
+		if (drawingMode == 0) //draw circle
 			cvDrawCircle(canvas, point, R, color, -1);
-		else
+		else //draw curve
 		{
 			Vector controlPoints = makeSplineStroke(point.x, point.y, R, ref, canvas);
 			drawSplines(canvas, &controlPoints, R, color);
@@ -237,58 +290,16 @@ IplImage* paint(IplImage* src, int R[5], int drawingMode)
 	{
 		//apply Gaussian blur
 		IplImage* ref = cvCreateImage(cvGetSize(src), 8, 3);
-		int k = 1; //임시 (홀수일것)
+		int k = 1;
 		int G = R[i] * k;
 		cvSmooth(src, ref, CV_GAUSSIAN, G);
-		cvShowImage("ref", ref);
 
 		//paint a layer
 		paintLayer(canvas, ref, R[i], drawingMode);
 		cvShowImage("canvas", canvas);
 
-		cvWaitKey(100);
+		cvWaitKey(1000);
 	}
 
 	return canvas;
-}
-
-int main()
-{
-	printf("=============================================\n");
-	printf("Software Department, Sejong University\n");
-	printf("Multimedia Programming Homework #4\n");
-	printf("Painterly Rendering\n");
-	printf("22011824 이지호\n");
-	printf("=============================================\n");
-	
-	char filePath[50]; //"c:\\TempImg\\giraffe.jpg"
-	printf("Input File Path:");
-	scanf("%s", filePath);
-	IplImage* src = cvLoadImage(filePath);
-	while (src == nullptr)
-	{
-		printf("File Not Found!\n");
-		printf("Input File Path:");
-		scanf("%s", filePath);
-		src = cvLoadImage(filePath);
-	}
-	int drawingMode;
-	printf("Select Drawing Mode (0=circle, 1=stroke):");
-	scanf("%d", &drawingMode);
-	while (!(drawingMode == 0 || drawingMode == 1))
-	{
-		printf("Wrong Drawing Mode!\n");
-		printf("Select Drawing Mode (0=circle, 1=stroke):");
-		scanf("%d", &drawingMode);
-	}
-
-	int R[5] = { 9,7,5,3,1 };
-	for (int i = 0; i < 5; i++)
-		R[i] *= 3;
-
-	IplImage* canvas = paint(src, R, drawingMode);
-	cvShowImage("canvas", canvas);
-	cvWaitKey();
-
-	return 0;
 }
