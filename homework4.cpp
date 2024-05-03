@@ -162,11 +162,11 @@ Vector makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 
 	//a new stroke with radius R and color strokeColor
 	CvSize size = cvGetSize(ref);
-	Vector strokes;
-	initVector(&strokes, maxStrokeLength);
+	Vector K;
+	initVector(&K, maxStrokeLength);
 
 	//add point (x0,y0) to strokes
-	pushVector(&strokes, cvPoint(x0, y0));
+	pushVector(&K, cvPoint(x0, y0));
 
 	int x = x0, y = y0;
 	float lastDx = 0, lastDy = 0;
@@ -188,7 +188,7 @@ Vector makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 		if (sqrt(gx * gx + gy * gy) == 0)
 			break;
 
-		//get unit vector of gradient
+		//get normal vector of gradient
 		float dx = -gy;
 		float dy = gx;
 
@@ -217,10 +217,10 @@ Vector makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 		lastDy = dy;
 
 		//add the point (x,y) to K
-		pushVector(&strokes, cvPoint(x, y));
+		pushVector(&K, cvPoint(x, y));
 	}
 
-	return strokes;
+	return K;
 }
 
 void drawSplines(IplImage* canvas, Vector* strokes, int R, CvScalar strokeColor)
