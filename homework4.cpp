@@ -1,4 +1,6 @@
 #include <opencv2/opencv.hpp>
+#include <stdlib.h>
+#include <time.h>
 
 typedef struct vector
 {
@@ -117,7 +119,7 @@ void shuffle(CvPoint* arr, int size)
 	srand(time(NULL));
 	for (int i = 0; i < size - 1; i++)
 	{
-		int rn = rand() % (size - i) + i;
+		int rn = rand() % (size - i) + i; //[i, size - 1] ±¸°£
 		CvPoint temp = arr[i];
 		arr[i] = arr[rn];
 		arr[rn] = temp;
@@ -248,7 +250,7 @@ void paintLayer(IplImage* canvas, IplImage* ref, int R, int drawingMode)
 			float areaError = getMeanError(x, y, grid, canvas, ref);
 
 			//threshold
-			int T = 50;
+			int T = 10;
 			if (areaError > T)
 			{
 				//find the largest error point
