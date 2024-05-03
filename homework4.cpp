@@ -64,6 +64,93 @@ void shuffle(CvPoint* arr, int size)
 	}
 }
 
+float getDiff(CvScalar a, CvScalar b)
+{
+	float sum = 0;
+	for (int k = 0; k < 3; k++)
+	{
+		sum += a.val[k] - b.val[k];
+	}
+	return sum;
+}
+
+void makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
+{
+	CvScalar strokeColor = cvGet2D(ref, y0, x0);
+
+	int maxStrokeLength = 4 * R;
+	int minStrokeLength = 0.2 * R;
+
+	//a new stroke with radius R and color strokeColor
+	CvSize size = cvGetSize(ref);
+	CvPoint* strokes = (CvPoint*)malloc(sizeof(CvPoint) * maxStrokeLength);
+	int back = -1;
+
+	//add point (x0,y0) to strokes
+	back++;
+	strokes[back] = cvPoint(x0, y0);
+
+	int x = x0, y = y0;
+	float lastDx = 0, lastDy = 0;
+
+	for (int i = 1; i < maxStrokeLength; i++)
+	{
+		if (i > minStrokeLength &&
+			getError(cvGet2D(ref, y, x), cvGet2D(canvas, y, x))
+			< getError(cvGet2D(ref, y, x), strokeColor))
+			break;
+
+		//gradient
+		if (x - 1 < 0 || y - 1 < 0 || x + 1 >= size.width || y + 1 >= size.height)
+			break;
+		float gx = getDiff(cvGet2D(ref, y, x + 1), cvGet2D(ref, y, x - 1));
+		float gy = getDiff(cvGet2D(ref, y + 1, x), cvGet2D(ref, y - 1, x));
+
+		//detect vanishing gradient
+		if (sqrt(gx * gx + gy * gy) == 0)
+			break;
+		
+		//get unit vector of gradient
+		float dx = -gy;
+		float dy = gx;
+
+		//if necessary, reverse direction
+		if (lastDx * dx + lastDy * dy < 0)
+		{
+			dx *= -1; dy *= -1;
+		}
+
+		//filter the stroke direction
+		float fc = 0.8; //ÀÌ°Ô ¹¹³ë
+		dx = fc * dx + (1 - fc) * lastDx;
+		dy = fc * dy + (1 - fc) * lastDy;
+		float norm = sqrt(dx * dx + dy * dy);
+		dx /= norm;
+		dy /= norm;
+
+		//next pos
+		x += R * dx;
+		y += R * dy;
+		if (x < 0 || y < 0 || x >= size.width || y >= size.height)
+			break;
+
+		//update last direction
+		lastDx = dx;
+		lastDy = dy;
+
+		//add the point (x,y) to K
+		back++;
+		strokes[back] = cvPoint(x, y);
+	}
+
+	//draw strokes
+	for (int i = 0; i < back; i++)
+	{
+		cvDrawLine(canvas, strokes[i], strokes[i + 1], strokeColor, R);
+	}
+	cvShowImage("canvas", canvas);
+}
+
 void paintLayer(IplImage* canvas, IplImage* ref, int R)
 {
 	CvSize size = cvGetSize(canvas);
@@ -96,13 +183,22 @@ void paintLayer(IplImage* canvas, IplImage* ref, int R)
 		}
 	}
 
-	//paint circle
+	//shuffle strokes' order
 	shuffle(strokes, back + 1);
+
+	//paint circle
+	//for (int i = 0; i <= back; i++)
+	//{
+	//	CvPoint point = strokes[i];
+	//	CvScalar color = cvGet2D(ref, point.y, point.x);
+	//	cvDrawCircle(canvas, point, R, color, -1);
+	//}
+
+	//paint spline
 	for (int i = 0; i <= back; i++)
 	{
 		CvPoint point = strokes[i];
-		CvScalar color = cvGet2D(ref, point.y, point.x);
-		cvDrawCircle(canvas, point, R, color, -1);
+		makeSplineStroke(point.x, point.y, R, ref, canvas);
 	}
 }
 
@@ -134,7 +230,7 @@ IplImage* paint(IplImage* src, int R[5])
 
 int main()
 {
-	IplImage* src = cvLoadImage("c:\\TempImg\\giraffe.jpg");
+	IplImage* src = cvLoadImage("c:\\TempImg\\sleeping_cat.jpg");
 	int R[5] = { 9,7,5,3,1 };
 	
 	//temp
