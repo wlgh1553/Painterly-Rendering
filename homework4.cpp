@@ -74,7 +74,31 @@ float getDiff(CvScalar a, CvScalar b)
 	return sum;
 }
 
-void makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
+typedef struct vector
+{
+	CvPoint* points;
+	int back;
+	int size;
+}Vector;
+
+void initVector(Vector* vec, int size)
+{
+	vec->points = (CvPoint*)malloc(sizeof(CvPoint) * size);
+	vec->back = -1;
+	vec->size = size;
+}
+
+int pushVector(Vector* vec, CvPoint elem)
+{
+	if (vec->back + 1 == vec->size)
+		return 0; //fail
+
+	(vec->back)++;
+	vec->points[vec->back] = elem;
+	return 1; //success
+}
+
+Vector makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 {
 	CvScalar strokeColor = cvGet2D(ref, y0, x0);
 
@@ -83,12 +107,11 @@ void makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 
 	//a new stroke with radius R and color strokeColor
 	CvSize size = cvGetSize(ref);
-	CvPoint* strokes = (CvPoint*)malloc(sizeof(CvPoint) * maxStrokeLength);
-	int back = -1;
+	Vector strokes;
+	initVector(&strokes, maxStrokeLength);
 
 	//add point (x0,y0) to strokes
-	back++;
-	strokes[back] = cvPoint(x0, y0);
+	pushVector(&strokes, cvPoint(x0, y0));
 
 	int x = x0, y = y0;
 	float lastDx = 0, lastDy = 0;
@@ -139,16 +162,19 @@ void makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 		lastDy = dy;
 
 		//add the point (x,y) to K
-		back++;
-		strokes[back] = cvPoint(x, y);
+		pushVector(&strokes, cvPoint(x, y));
 	}
 
+	return strokes;
+}
+
+void drawSplines(IplImage* canvas, Vector* strokes, int R, CvScalar strokeColor)
+{
 	//draw strokes
-	for (int i = 0; i < back; i++)
+	for (int i = 0; i < strokes->back; i++)
 	{
-		cvDrawLine(canvas, strokes[i], strokes[i + 1], strokeColor, R);
+		cvDrawLine(canvas, strokes->points[i], strokes->points[i + 1], strokeColor, R);
 	}
-	cvShowImage("canvas", canvas);
 }
 
 void paintLayer(IplImage* canvas, IplImage* ref, int R, int drawingMode)
@@ -156,9 +182,9 @@ void paintLayer(IplImage* canvas, IplImage* ref, int R, int drawingMode)
 	CvSize size = cvGetSize(canvas);
 
 	//create a new set of strokes, initially empty
-	CvPoint* strokes = (CvPoint*)malloc(sizeof(CvPoint) * size.height * size.width);
-	int back = -1;
-	
+	Vector strokes;
+	initVector(&strokes, size.height * size.width);
+
 	int fg = 1; //юс╫ц
 	int grid = R * fg;
 
@@ -177,32 +203,25 @@ void paintLayer(IplImage* canvas, IplImage* ref, int R, int drawingMode)
 				CvPoint point = getLargestErrorPoint(x, y, grid, canvas, ref);
 				
 				//add strokes
-				back++;
-				strokes[back] = point;
+				pushVector(&strokes, point);
 			}
 		}
 	}
 
 	//shuffle strokes' order
-	shuffle(strokes, back + 1);
+	shuffle(strokes.points, strokes.back + 1);
 
-	//paint circle
-	if (drawingMode == 0)
+	//paint
+	for (int i = 0; i <= strokes.back; i++)
 	{
-		for (int i = 0; i <= back; i++)
-		{
-			CvPoint point = strokes[i];
-			CvScalar color = cvGet2D(ref, point.y, point.x);
+		CvPoint point = strokes.points[i];
+		CvScalar color = cvGet2D(ref, point.y, point.x);
+		if(drawingMode == 0)
 			cvDrawCircle(canvas, point, R, color, -1);
-		}
-	}
-	else
-	{
-		//paint spline
-		for (int i = 0; i <= back; i++)
+		else
 		{
-			CvPoint point = strokes[i];
-			makeSplineStroke(point.x, point.y, R, ref, canvas);
+			Vector controlPoints = makeSplineStroke(point.x, point.y, R, ref, canvas);
+			drawSplines(canvas, &controlPoints, R, color);
 		}
 	}
 }
@@ -227,7 +246,7 @@ IplImage* paint(IplImage* src, int R[5], int drawingMode)
 		paintLayer(canvas, ref, R[i], drawingMode);
 		cvShowImage("canvas", canvas);
 
-		cvWaitKey();
+		cvWaitKey(100);
 	}
 
 	return canvas;
