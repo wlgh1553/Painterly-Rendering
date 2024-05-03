@@ -151,7 +151,7 @@ void makeSplineStroke(int x0, int y0, int R, IplImage* ref, IplImage* canvas)
 	cvShowImage("canvas", canvas);
 }
 
-void paintLayer(IplImage* canvas, IplImage* ref, int R)
+void paintLayer(IplImage* canvas, IplImage* ref, int R, int drawingMode)
 {
 	CvSize size = cvGetSize(canvas);
 
@@ -187,22 +187,27 @@ void paintLayer(IplImage* canvas, IplImage* ref, int R)
 	shuffle(strokes, back + 1);
 
 	//paint circle
-	//for (int i = 0; i <= back; i++)
-	//{
-	//	CvPoint point = strokes[i];
-	//	CvScalar color = cvGet2D(ref, point.y, point.x);
-	//	cvDrawCircle(canvas, point, R, color, -1);
-	//}
-
-	//paint spline
-	for (int i = 0; i <= back; i++)
+	if (drawingMode == 0)
 	{
-		CvPoint point = strokes[i];
-		makeSplineStroke(point.x, point.y, R, ref, canvas);
+		for (int i = 0; i <= back; i++)
+		{
+			CvPoint point = strokes[i];
+			CvScalar color = cvGet2D(ref, point.y, point.x);
+			cvDrawCircle(canvas, point, R, color, -1);
+		}
+	}
+	else
+	{
+		//paint spline
+		for (int i = 0; i <= back; i++)
+		{
+			CvPoint point = strokes[i];
+			makeSplineStroke(point.x, point.y, R, ref, canvas);
+		}
 	}
 }
 
-IplImage* paint(IplImage* src, int R[5])
+IplImage* paint(IplImage* src, int R[5], int drawingMode)
 {
 	//create a new constant color image
 	IplImage* canvas = cvCreateImage(cvGetSize(src), 8, 3);
@@ -219,7 +224,7 @@ IplImage* paint(IplImage* src, int R[5])
 		cvShowImage("ref", ref);
 
 		//paint a layer
-		paintLayer(canvas, ref, R[i]);
+		paintLayer(canvas, ref, R[i], drawingMode);
 		cvShowImage("canvas", canvas);
 
 		cvWaitKey();
@@ -230,14 +235,39 @@ IplImage* paint(IplImage* src, int R[5])
 
 int main()
 {
-	IplImage* src = cvLoadImage("c:\\TempImg\\sleeping_cat.jpg");
-	int R[5] = { 9,7,5,3,1 };
+	printf("=============================================\n");
+	printf("Software Department, Sejong University\n");
+	printf("Multimedia Programming Homework #4\n");
+	printf("Painterly Rendering\n");
+	printf("22011824 ÀÌÁöÈ£\n");
+	printf("=============================================\n");
 	
-	//temp
+	char filePath[50]; //"c:\\TempImg\\giraffe.jpg"
+	printf("Input File Path:");
+	scanf("%s", filePath);
+	IplImage* src = cvLoadImage(filePath);
+	while (src == nullptr)
+	{
+		printf("File Not Found!\n");
+		printf("Input File Path:");
+		scanf("%s", filePath);
+		src = cvLoadImage(filePath);
+	}
+	int drawingMode;
+	printf("Select Drawing Mode (0=circle, 1=stroke):");
+	scanf("%d", &drawingMode);
+	while (!(drawingMode == 0 || drawingMode == 1))
+	{
+		printf("Wrong Drawing Mode!\n");
+		printf("Select Drawing Mode (0=circle, 1=stroke):");
+		scanf("%d", &drawingMode);
+	}
+
+	int R[5] = { 9,7,5,3,1 };
 	for (int i = 0; i < 5; i++)
 		R[i] *= 3;
 
-	IplImage* canvas = paint(src, R);
+	IplImage* canvas = paint(src, R, drawingMode);
 	cvShowImage("canvas", canvas);
 	cvWaitKey();
 
